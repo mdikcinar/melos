@@ -446,8 +446,36 @@ Future<Process> startCommandRaw(
 }
 
 final _runningPids = <int>[];
+final _runningProcesses = <Process>[];
 
 List<int> get runningPids => UnmodifiableListView(_runningPids);
+
+void killProcess(Process process, {bool force = false}) {
+  if (currentPlatform.isWindows) {
+    // On Windows, Process.kill should terminate child processes too
+    process.kill(force ? ProcessSignal.sigkill : ProcessSignal.sigterm);
+  } else {
+    // On Unix-like systems (Mac, Linux), try to kill the process group
+    // SIGTERM (15) for graceful, SIGKILL (9) for force
+    final signal = force ? 9 : 15;
+
+    // Dart's Process API doesn't support process groups directly
+    // So we use Process.run to execute the kill command with -pid to target process group
+    Process.runSync('kill', ['-$signal', '-${process.pid}']);
+
+    // Also kill the process directly as a fallback
+    Process.killPid(
+        process.pid, force ? ProcessSignal.sigkill : ProcessSignal.sigterm);
+  }
+}
+
+/// Kill all running processes tracked by Melos
+void killAllProcesses({bool force = false}) {
+  final processes = List<Process>.from(_runningProcesses);
+  for (final process in processes) {
+    killProcess(process, force: force);
+  }
+}
 
 Future<int> startCommand(
   List<String> command, {
@@ -473,6 +501,7 @@ Future<int> startCommand(
   );
 
   _runningPids.add(process.pid);
+  _runningProcesses.add(process);
 
   var stdoutStream = process.stdout;
   var stderrStream = process.stderr;
@@ -533,6 +562,7 @@ Future<int> startCommand(
   final exitCode = await process.exitCode;
 
   _runningPids.remove(process.pid);
+  _runningProcesses.remove(process);
 
   if (onlyOutputOnError && exitCode > 0) {
     logger.log(

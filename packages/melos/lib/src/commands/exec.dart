@@ -173,9 +173,7 @@ mixin _ExecMixin on _Melos {
         }
 
         if (packageExitCode > 0 && failFast) {
-          for (final pid in runningPids.toList()) {
-            Process.killPid(pid, ProcessSignal.sigkill);
-          }
+          killAllProcesses(force: true);
           await operation.cancel();
         }
       }).drain<void>(),
@@ -184,9 +182,7 @@ mixin _ExecMixin on _Melos {
     await operation.valueOrCancellation();
 
     if (failFast) {
-      for (final pid in runningPids.toList()) {
-        Process.killPid(pid, ProcessSignal.sigkill);
-      }
+      killAllProcesses(force: true);
     }
 
     logger
